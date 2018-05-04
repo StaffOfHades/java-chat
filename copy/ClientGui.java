@@ -41,6 +41,7 @@ public class ClientGui extends Thread {
   BufferedReader input;
   PrintWriter output;
   Socket server;
+  private int KEY_SIZE = 512;
 
   public ClientGui() {
     this.serverName = "localhost";
@@ -241,7 +242,6 @@ public class ClientGui extends Thread {
           }
 
           SecureRandom random = new SecureRandom(keyGen.getBytes());
-          int KEY_SIZE = 512  ;
           BigInteger p = BigInteger.probablePrime(KEY_SIZE / 2, random);
           BigInteger q = BigInteger.probablePrime(KEY_SIZE / 2, random);
           BigInteger n = p.multiply(q);
@@ -425,7 +425,8 @@ public class ClientGui extends Thread {
           String userPrivate = message.substring(firstSpace + 1);
           //System.out.println(userPrivate);
           //System.out.println(head);
-          userPrivate = encrypt(userPrivate);
+          userPrivate = encrypt(userPrivate );
+
           message = head + " " + userPrivate;
         }
 
@@ -445,12 +446,56 @@ public class ClientGui extends Thread {
   }
 
   private String encrypt(String message) {
+    byte[] bytes = Base64.getEncoder().encode(message.getBytes());
+    int blockSize = 1;
+    int msg_len = bytes.length;
+    int N = KEY_SIZE / 8;
+    if(msg_len > N && msg_len % N == 0) {
+      blockSize = msg_len / N;
+    } else if(msg_len > N && msg_len % N != 0) {
+      blockSize = msg_len / N + 1;
+    }
+    System.out.println("blockSize: " + blockSize);
+    System.out.println("msg_len: " + msg_len);
+    String encrypted = "";
+    for(int i = 0; i < blockSize; i++) {
+      if(i == blockSize - 1) {
+        encrypted += encryptBlock(Arrays.copyOfRange(bytes, i * N, msg_len));
+      } else {
+        encrypted += encryptBlock(Arrays.copyOfRange(bytes, i * N, (i + 1) * N));
+      }
+    }
+    return encrypted;
+  }
+
+  private String decrypt(String message) {
+    int blockSize = 1;
+    int msg_len = message.length();
+    int N = 154;
+    if(msg_len > N && msg_len % N == 0) {
+      blockSize = msg_len / N;
+    } else if(msg_len > N && msg_len % N != 0) {
+      blockSize = msg_len / N + 1;
+    }
+    System.out.println("blockSize: " + blockSize);
+    System.out.println("msg_len: " + msg_len);
+    String decrypted = "";
+    for(int i = 0; i < blockSize; i++) {
+      if(i == blockSize - 1) {
+        decrypted += decryptBlock(message.substring(i * N, msg_len));  
+      } else {
+        decrypted += decryptBlock(message.substring(i * N, (i + 1) * N)); 
+      }
+    }
+    return decrypted;
+  }
+
+  private String encryptBlock(byte[] bytes) {
     if(otherPublicKey == null || otherModulus == null) {
       otherPublicKey = publicKey;
       otherModulus = modulus;
     }
     System.out.println("Encrypting");
-    byte[] bytes = Base64.getEncoder().encode(message.getBytes());
     BigInteger encryptedMsg = new BigInteger(bytes);
     System.out.println("p: " + encryptedMsg.toString());
     encryptedMsg = encryptedMsg.modPow(otherPublicKey, otherModulus);
@@ -458,9 +503,8 @@ public class ClientGui extends Thread {
     return encryptedMsg.toString();
   }
 
-  private String decrypt(String cipher) {
+  private String decryptBlock(String cipher) {
     System.out.println("Decrypting");
-    byte[] input = cipher.getBytes();
     BigInteger decryptedMsg = new BigInteger(cipher);
     System.out.println("c: " + decryptedMsg.toString());
     decryptedMsg = decryptedMsg.modPow(privateKey, modulus);
