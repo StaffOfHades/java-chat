@@ -126,7 +126,7 @@ public class ClientGui extends Thread {
       }
     });
 
-    // Check if file exists
+    // Check if key files exist
     final Path private_key = Paths.get("chat_rsa");
     final Path public_key = Paths.get("chat_rsa.pub");
     boolean fileExists = Files.exists(private_key) && Files.exists(public_key);
@@ -144,7 +144,7 @@ public class ClientGui extends Thread {
 
     jcbtn.setEnabled(false);
 
-    // check if those field are not empty
+    // check if those field are not empty, and a key is loaded
     jtfName.getDocument().addDocumentListener(new TextListener(jtfName, jtfport, jtfAddr, jkbtn, jcbtn));
     jtfport.getDocument().addDocumentListener(new TextListener(jtfName, jtfport, jtfAddr, jkbtn, jcbtn));
     jtfAddr.getDocument().addDocumentListener(new TextListener(jtfName, jtfport, jtfAddr, jkbtn, jcbtn));
@@ -185,8 +185,10 @@ public class ClientGui extends Thread {
         +"<li><b>top arrow</b> to select the last message typed</li>"
         +"</ul><br/>");
 
+
     final ClientGui that = this;
 
+    // Choose public key to open and save, for use in encryption.
     jopbtn.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ae) {
         JFileChooser chooser = new JFileChooser(Paths.get("..").toFile());
@@ -211,6 +213,8 @@ public class ClientGui extends Thread {
       }
     });
 
+    // If no key is found, create a new one.
+    // Once a key is created, load it into memory.
     jkbtn.addActionListener(new ActionListener() {
       public void actionPerformed(ActionEvent ae) {
         boolean fileExists = Files.exists(private_key) && Files.exists(public_key);
@@ -236,18 +240,24 @@ public class ClientGui extends Thread {
             System.exit(1);
           }
         } else {
+
+          // Intialize a random number generator with a user's phone number
           String keyGen = null;
           while(keyGen == null || keyGen.length() <= 0) {
             keyGen = (String) JOptionPane.showInputDialog("Phone Number: ", "000-0000");
           }
-
           SecureRandom random = new SecureRandom(keyGen.getBytes());
+
+          // Create an initial set of values for RSA
           BigInteger p = BigInteger.probablePrime(KEY_SIZE / 2, random);
           BigInteger q = BigInteger.probablePrime(KEY_SIZE / 2, random);
           BigInteger n = p.multiply(q);
           BigInteger phi = (p.subtract(BigInteger.ONE)).multiply(q.subtract(BigInteger.ONE));
           BigInteger e = new BigInteger(KEY_SIZE, random);
-          System.out.println(n.bitLength());
+          //System.out.println(n.bitLength());
+          
+          // Make sure that the bitlength of the modulus is equal to
+          // key size, that 0 < e < phi, and that the gcd(e, phi) = 1.
           while(  n.bitLength() != KEY_SIZE ||
                   e.compareTo(BigInteger.ONE.add(BigInteger.ONE)) < 0 ||
                   e.compareTo(phi.subtract(BigInteger.ONE)) > 0 ||
@@ -272,11 +282,13 @@ public class ClientGui extends Thread {
             phi = (p.subtract(BigInteger.ONE)).multiply(q.subtract(BigInteger.ONE));
             e = new BigInteger(KEY_SIZE, random);
           }
+          // Once the values are correct, generate d
           BigInteger d = e.modInverse(phi);
           System.out.println("e: " + e.toString());
           System.out.println("d: " + d.toString());
           System.out.println("n: " + n.toString());
 
+          // Save the public and private key to file.
           final String publicKey = n + "," + e;
           final String privateKey = n + "," + d;
           final byte[] public_key_bytes = Base64.getEncoder().encode(publicKey.getBytes());
@@ -364,7 +376,7 @@ public class ClientGui extends Thread {
 
   }
 
-  // check if if all field are not empty
+  // check if if all field are not empty, as well as key loaded
   public class TextListener implements DocumentListener {
     JTextField jtf1;
     JTextField jtf2;
@@ -420,17 +432,22 @@ public class ClientGui extends Thread {
       // Private message
       if (message.charAt(0) == '@'){
         if(message.contains(" ")){
+
+          // Decompose message into user and text
           int firstSpace = message.indexOf(' ');
           String head = message.substring(0, firstSpace);
           String userPrivate = message.substring(firstSpace + 1);
           //System.out.println(userPrivate);
           //System.out.println(head);
+
+          // Encryp text
           userPrivate = encrypt(userPrivate );
 
+          // Join then up again.
           message = head + " " + userPrivate;
         }
 
-      // Color update
+      // Encrypt normal message (not color update)
       } else if (message.charAt(0) != '#') {
         message = encrypt(message);
       }
@@ -445,11 +462,15 @@ public class ClientGui extends Thread {
     }
   }
 
+  // Divide the text into blocks of bit size key size
   private String encrypt(String message) {
+    // To guarantee standard block size, encode the message byte in base 64.
     byte[] bytes = Base64.getEncoder().encode(message.getBytes());
     int blockSize = 1;
     int msg_len = bytes.length;
     int N = KEY_SIZE / 8;
+
+    // Calculate correct block amount.
     if(msg_len > N && msg_len % N == 0) {
       blockSize = msg_len / N;
     } else if(msg_len > N && msg_len % N != 0) {
@@ -458,6 +479,8 @@ public class ClientGui extends Thread {
     System.out.println("blockSize: " + blockSize);
     System.out.println("msg_len: " + msg_len);
     String encrypted = "";
+
+    // Encrypt each block, and join them sequentially.
     for(int i = 0; i < blockSize; i++) {
       if(i == blockSize - 1) {
         encrypted += encryptBlock(Arrays.copyOfRange(bytes, i * N, msg_len));
@@ -468,10 +491,19 @@ public class ClientGui extends Thread {
     return encrypted;
   }
 
+  // Divide the text into blocks of appropiate bit size according to key size.
   private String decrypt(String message) {
     int blockSize = 1;
     int msg_len = message.length();
-    int N = 154;
+    // Since the message is alredy encoded, find the appropiate block size;
+    int N;
+    switch(KEY_SIZE) {
+      case 512:
+      default:
+        N = 154;
+    }
+
+    // Calculate correct block amount.
     if(msg_len > N && msg_len % N == 0) {
       blockSize = msg_len / N;
     } else if(msg_len > N && msg_len % N != 0) {
@@ -480,6 +512,8 @@ public class ClientGui extends Thread {
     System.out.println("blockSize: " + blockSize);
     System.out.println("msg_len: " + msg_len);
     String decrypted = "";
+
+    // Decrypt each block and join them sequentially.
     for(int i = 0; i < blockSize; i++) {
       if(i == blockSize - 1) {
         decrypted += decryptBlock(message.substring(i * N, msg_len));  
@@ -490,7 +524,10 @@ public class ClientGui extends Thread {
     return decrypted;
   }
 
+  // Encrypt block using RSA
   private String encryptBlock(byte[] bytes) {
+    // If no public key has been loaded for a target,
+    // use own public key.
     if(otherPublicKey == null || otherModulus == null) {
       otherPublicKey = publicKey;
       otherModulus = modulus;
@@ -503,6 +540,7 @@ public class ClientGui extends Thread {
     return encryptedMsg.toString();
   }
 
+  // Dencrypt block using RSA
   private String decryptBlock(String cipher) {
     System.out.println("Decrypting");
     BigInteger decryptedMsg = new BigInteger(cipher);
@@ -537,10 +575,15 @@ public class ClientGui extends Thread {
             }else{
               System.out.println(message);
               final String copy = message;
+
+              // Check if text matches any message type
               Pattern heading = Pattern.compile(
                 "(\\(<b>Private</b>\\))?<u><span style='color:#[a-fA-F0-9]+'>[a-zA-Z0-9! ]+</span></u>( -> \\(<b>[a-zA-Z0-9! ]+</b>\\))?(<span>)?[ :|:]\\ *"
               );
               Matcher matcher = heading.matcher(message);
+
+              // If so, separate decorator/html from text,
+              // decrypt it, and then put them back together.
               if(matcher.find()) {
                 String head = matcher.group(0);
                 message = message.substring(head.length());
@@ -551,6 +594,7 @@ public class ClientGui extends Thread {
                   tail = matcher.group(0);
                   message = message.substring(0, message.length() - tail.length());
                 }
+                // Try to decrypt message, otherwise output original message.
                 try {
                   //System.out.println(message);
                   message = decrypt(message);
@@ -560,7 +604,7 @@ public class ClientGui extends Thread {
                   message = copy;
                 }
               } else {
-                  System.out.println("Could not find pattern, message is: " + message);
+                  System.out.println("Could not find pattern");
               }
               appendToPane(jtextFilDiscu, message);
             }
