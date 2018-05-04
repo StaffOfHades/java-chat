@@ -5,10 +5,10 @@ A simple java chat application
 > which allows for a server with multiple
 > client programs to join.
         <ul>
-        <li><b>@nickname</b> pour envoyer un Message privé à l'utilisateur 'nickname'</li>
-        <li><b>#d3961b</b> pour changer la couleur de son pseudo au code hexadécimal indiquer</li>
-        <li><b>;)</b> quelques smileys sont implémentés</li>
-        <li><b>flèche du haut</b> pour reprendre le dernier message tapé</li>
+        <li><b>@nickname</b> to send a Private Message to the user 'nickname'</li>
+        <li><b>#d3961b</b> to change the color of your nickname to indicated hexadecimal</li>
+        <li><b>;)</b>, some smileys are implemented</li>
+        <li><b>top arrow</b> to select the last message typed</li>
         </ul><br/>
 
 
